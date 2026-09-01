@@ -1,0 +1,522 @@
+## Scripts for Figure 01
+"""
+Course Offerings Overview
+(Combined: Course Offerings Yes/No  +  Q5 Courses Listed by Institutions)
+Run this in Google Colab.
+
+Merges the two previously separate charts into a single two-panel figure:
+  - Left  : institute-level Yes/No summary for "Does your department offer
+            courses related to evolution/ecology/wildlife genetics/..."  (Q4)
+  - Right : Q5 course-category breakdown (comma-separated multi-select,
+            counted per institute mention)
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+inst_col = "Institute's Name: "
+
+# ==================================================================
+# PANEL 1 DATA -- Q4: Course Offerings Yes/No (institute-level)
+# ==================================================================
+q4_col = [c for c in df.columns if 'Q4.' in c and 'currently offer courses' in c][0]
+
+sub4 = df[[inst_col, q4_col]].dropna(subset=[inst_col]).copy()
+sub4[q4_col] = sub4[q4_col].astype(str).str.strip()
+
+def institute_status(vals):
+    if (vals == 'Yes').any():
+        return 'Yes'
+    elif (vals == 'No').any():
+        return 'No'
+    else:
+        return 'Unknown'
+
+institute_summary = sub4.groupby(inst_col)[q4_col].apply(institute_status)
+
+counts4 = institute_summary.value_counts()
+yes_inst = counts4.get('Yes', 0)
+no_inst = counts4.get('No', 0)
+responded_inst = yes_inst + no_inst  # denominator matches the reference: Yes+No only
+
+yes_pct = yes_inst / responded_inst * 100 if responded_inst else 0
+no_pct = no_inst / responded_inst * 100 if responded_inst else 0
+
+print("Panel 1 - Course Offerings (Q4):")
+print(f"  Yes: {yes_inst} ({yes_pct:.1f}%)   No: {no_inst} ({no_pct:.1f}%)   Total: {responded_inst}")
+
+# ==================================================================
+# PANEL 2 DATA -- Q5: Courses Listed by Institutions
+# ==================================================================
+q5_col = [c for c in df.columns if c.strip().startswith('Q5.')][0]
+
+responses5 = df[q5_col].dropna()
+counts5 = Counter()
+for entry in responses5:
+    for cat in [c.strip() for c in str(entry).split(',') if c.strip()]:
+        counts5[cat] += 1
+
+course_counts = pd.Series(counts5).sort_values(ascending=False)
+print("\nPanel 2 - Course categories (Q5):")
+print(course_counts)
+
+# ------------------------------------------------------------------
+# 2. Plot -- combined two-panel figure
+# ------------------------------------------------------------------
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8), gridspec_kw={'width_ratios': [1, 1.4]})
+fig.suptitle('Course Offerings Overview', fontsize=20, fontweight='bold', y=1.02)
+
+# --- Panel 1: Yes vs No ---
+labels1 = ['Yes\n(Offers Course)', 'No\n(Does Not Offer)']
+vals1 = [yes_inst, no_inst]
+pcts1 = [yes_pct, no_pct]
+colors1 = ['#3d5a80', '#c1444d']
+
+bars1 = ax1.bar(labels1, vals1, color=colors1, width=0.5)
+for bar, v, p in zip(bars1, vals1, pcts1):
+    ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(vals1) * 0.02,
+              f"{v} Institutes\n({p:.1f}%)", ha='center', va='bottom',
+              fontsize=12, fontweight='bold')
+
+ax1.set_ylim(0, max(vals1) * 1.30)
+ax1.set_title('Course Offerings\n(Yes vs No)', fontsize=14, fontweight='bold')
+for spine in ['top', 'right']:
+    ax1.spines[spine].set_visible(False)
+ax1.axhline(0, color='black', linewidth=1)
+
+# --- Panel 2: Q5 course categories (horizontal bar) ---
+plot_data = course_counts.sort_values(ascending=True)  # smallest at bottom for barh
+
+color_map = {
+    'Behavioral Studies': '#1f6bb0',
+    'Basic Biology': '#aec6e8',
+    'Biotechnology': '#f7a94a',
+    'Wildlife': '#8fd07d',
+    'Molecular Biology': '#f4867e',
+    'Environmental Science': '#c9b8de',
+    'Others': '#8c564b',
+    'Conservation Biology': '#d63bbf',
+    'Evolution': '#7f7f7f',
+    'Ecology': '#c6c81e',
+    'Bioinformatics & Omics technologies': '#12b3c9',
+    'Genetics': '#a6dceb',
+}
+colors2 = [color_map.get(idx, '#999999') for idx in plot_data.index]
+
+bars2 = ax2.barh(plot_data.index, plot_data.values, color=colors2,
+                  edgecolor='black', linewidth=0.6)
+for bar, v in zip(bars2, plot_data.values):
+    ax2.text(bar.get_width() + max(plot_data.values) * 0.01,
+              bar.get_y() + bar.get_height() / 2,
+              f"{v}", va='center', ha='left', fontsize=11, fontweight='bold')
+
+ax2.set_xlabel('Number of Institutions Offering the Course', fontsize=12)
+ax2.set_title('Courses Listed by Institutions', fontsize=14, fontweight='bold')
+ax2.set_xlim(0, max(plot_data.values) * 1.15)
+for spine in ['top', 'right', 'left']:
+    ax2.spines[spine].set_visible(False)
+ax2.axvline(0, color='black', linewidth=1)
+
+plt.tight_layout()
+plt.savefig('course_offerings_overview.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('course_offerings_overview.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as course_offerings_overview.tif (HD) and course_offerings_overview.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("course_offerings_overview.tif")
+##################################################################################################################################################
+
+## Scripts for Figure 02
+"""
+Specific Topics Within Genomics Covered in Curriculum -- UpSet Plot
+Run this in Google Colab.
+
+Extracts institute-level topic combinations from Q9 (multi-select,
+comma-separated), collapses multiple respondents per institute into one
+combined topic set, drops "None of the above", and builds a custom
+UpSet-style plot: exact-combination bar chart on top, a topic membership
+matrix in the middle, and per-topic totals as a horizontal bar chart
+on the left.
+"""
+
+import os
+from collections import Counter
+from itertools import combinations
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+# ------------------------------------------------------------------
+# 2. Identify columns
+# ------------------------------------------------------------------
+inst_col = "Institute's Name: "
+q9_col = [c for c in df.columns if c.strip().startswith('Q9.')][0]
+print("Institute column:", repr(inst_col))
+print("Q9 column       :", repr(q9_col))
+
+# ------------------------------------------------------------------
+# 3. Build institute-level topic sets
+#    Each response is a comma-separated list of topics, e.g.
+#    "NGS technologies, Bioinformatics, Phylogenomics". Some institutes
+#    have multiple respondents -- union their topics into one set per
+#    institute. "None of the above" is dropped (it means no topics).
+# ------------------------------------------------------------------
+sub = df[[inst_col, q9_col]].dropna(subset=[inst_col, q9_col]).copy()
+
+def parse_topics(value):
+    parts = [p.strip() for p in str(value).split(',') if p.strip()]
+    return {p for p in parts if p.lower() != 'none of the above'}
+
+sub['topics'] = sub[q9_col].apply(parse_topics)
+
+institute_topics = (
+    sub.groupby(inst_col)['topics']
+       .apply(lambda series: set().union(*series))
+)
+
+# Keep only institutes that reported at least one topic
+institute_topics = institute_topics[institute_topics.apply(len) > 0]
+total_institutes = len(institute_topics)
+print(f"\nTotal unique institutes (with >=1 topic): {total_institutes}")
+
+# ------------------------------------------------------------------
+# 4. Count exact combinations
+# ------------------------------------------------------------------
+TOPIC_ORDER = ['Bioinformatics', 'Phylogenomics', 'NGS technologies',
+               'Genome assembly', 'Others']
+
+combo_counts = Counter(frozenset(s) for s in institute_topics)
+combo_counts = dict(sorted(combo_counts.items(), key=lambda kv: -kv[1]))
+
+print("\nExact combinations:")
+for combo, count in combo_counts.items():
+    ordered = [t for t in TOPIC_ORDER if t in combo]
+    print(f"  {count:>3}  {', '.join(ordered)}")
+
+# ------------------------------------------------------------------
+# 5. Per-topic totals (for the left-side bar panel)
+# ------------------------------------------------------------------
+topic_totals = {t: sum(1 for s in institute_topics if t in s) for t in TOPIC_ORDER}
+
+# ------------------------------------------------------------------
+# 6. Classify each combination for bar coloring
+#    - green : "Bioinformatics" alone
+#    - red   : contains Bioinformatics + NGS technologies + Phylogenomics
+#              together (regardless of any other topics present)
+#    - blue  : everything else (general combination)
+# ------------------------------------------------------------------
+CORE_TRIO = {'Bioinformatics', 'NGS technologies', 'Phylogenomics'}
+
+def classify(combo):
+    if combo == {'Bioinformatics'}:
+        return 'green'
+    if CORE_TRIO.issubset(combo):
+        return 'red'
+    return 'blue'
+
+COLOR_HEX = {'red': '#E4726A', 'green': '#3E9B4F', 'blue': '#1f6bb0'}
+
+combos = list(combo_counts.keys())
+counts = list(combo_counts.values())
+bar_colors = [COLOR_HEX[classify(c)] for c in combos]
+
+# ------------------------------------------------------------------
+# 7. Plot -- UpSet-style figure
+# ------------------------------------------------------------------
+n_combos = len(combos)
+n_topics = len(TOPIC_ORDER)
+
+fig = plt.figure(figsize=(16, 10))
+gs = gridspec.GridSpec(
+    2, 3,
+    width_ratios=[1, 1.15, 4.2],
+    height_ratios=[2.3, 1.6],
+    wspace=0.05, hspace=0.05
+)
+
+ax_bar = fig.add_subplot(gs[0, 2])          # top-right: combination bar chart
+ax_matrix = fig.add_subplot(gs[1, 2], sharex=ax_bar)   # bottom-right: membership matrix
+ax_labels = fig.add_subplot(gs[1, 1], sharey=ax_matrix)  # bottom-middle: topic name labels
+ax_totals = fig.add_subplot(gs[1, 0], sharey=ax_matrix)  # bottom-left: per-topic totals
+
+x = range(n_combos)
+
+# --- Top bar chart ---
+bars = ax_bar.bar(x, counts, color=bar_colors, width=0.6)
+for xi, c in zip(x, counts):
+    ax_bar.text(xi, c + max(counts) * 0.02, str(c),
+                ha='center', va='bottom', fontsize=14, fontweight='bold')
+ax_bar.set_ylabel('Number of Institutes', fontsize=13)
+ax_bar.spines[['top', 'right']].set_visible(False)
+ax_bar.axhline(0, color='black', linewidth=1)
+ax_bar.tick_params(axis='x', bottom=False, labelbottom=False)
+fig.suptitle('Specific Topics Within Genomics Covered in Curriculum\nUpSet Plot',
+             fontsize=22, fontweight='bold', y=0.98)
+
+# --- Matrix (dot/line) panel ---
+for row_i, topic in enumerate(TOPIC_ORDER):
+    y = n_topics - 1 - row_i  # top row = first topic
+    ax_matrix.axhspan(y - 0.5, y + 0.5,
+                       color='#f2f2f2' if row_i % 2 == 0 else 'white', zorder=0)
+
+for col_i, combo in enumerate(combos):
+    member_rows = [n_topics - 1 - TOPIC_ORDER.index(t) for t in TOPIC_ORDER if t in combo]
+    color = bar_colors[col_i]
+    if len(member_rows) > 1:
+        ax_matrix.plot([col_i, col_i], [min(member_rows), max(member_rows)],
+                        color=color, linewidth=2.5, zorder=1)
+    for row_i in range(n_topics):
+        y = n_topics - 1 - row_i
+        is_member = TOPIC_ORDER[row_i] in combo
+        ax_matrix.scatter(col_i, y,
+                           s=220 if is_member else 140,
+                           color=color if is_member else '#d9dee3',
+                           zorder=2, edgecolors='none')
+
+ax_matrix.set_yticks(range(n_topics))
+ax_matrix.set_yticklabels([])
+ax_matrix.set_xticks(x)
+ax_matrix.set_xticklabels([])
+ax_matrix.set_xlim(-0.6, n_combos - 0.4)
+ax_matrix.set_ylim(-0.6, n_topics - 0.4)
+for spine in ax_matrix.spines.values():
+    spine.set_visible(False)
+ax_matrix.tick_params(left=False, bottom=False)
+
+# Topic name labels, drawn in their own axis so they always render in full.
+for row_i, topic in enumerate(TOPIC_ORDER):
+    y = n_topics - 1 - row_i
+    ax_labels.text(1.0, y, topic, ha='right', va='center', fontsize=13)
+ax_labels.set_xlim(0, 1)
+ax_labels.axis('off')
+
+# --- Left panel: per-topic totals ---
+totals_ordered = [topic_totals[t] for t in TOPIC_ORDER[::-1]]  # match matrix row order
+ax_totals.barh(range(n_topics), totals_ordered, color='#1f6bb0', height=0.6)
+ax_totals.invert_xaxis()
+ax_totals.set_xlabel('Total Institutes\nCovering Topic', fontsize=10)
+ax_totals.tick_params(left=False, labelleft=False)
+for spine in ['top', 'left']:
+    ax_totals.spines[spine].set_visible(False)
+
+# ------------------------------------------------------------------
+# 8. Legend + footer
+# ------------------------------------------------------------------
+legend_handles = [
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['blue']),
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['red']),
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['green']),
+]
+legend_labels = [
+    'General Combination',
+    'Bioinformatics + NGS Technologies + Phylogenomics Together',
+    'Bioinformatics Only',
+]
+fig.legend(legend_handles, legend_labels, title='Highlighted Combinations',
+           loc='lower center', ncol=3, fontsize=12, title_fontsize=13,
+           frameon=True, bbox_to_anchor=(0.5, -0.02))
+
+fig.text(0.5, -0.09,
+          f"Total unique institutes: {total_institutes}  |  Each dot = a topic  |  "
+          f"Connected dots = topics covered together  |  Bar height = number of "
+          f"institutes with that exact combination",
+          ha='center', fontsize=11, color='gray')
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.96])
+plt.savefig('q9_genomics_upset.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q9_genomics_upset.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q9_genomics_upset.tif (HD) and q9_genomics_upset.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q9_genomics_upset.tif")
+##################################################################################################################################################
+
+## Scripts for Figure 03
+"""
+Integration of Genetics & Heredity vs Big Data & Genomics into
+Evolutionary Biology Courses (Q7 vs Q8, merged grouped bar chart)
+Run this in Google Colab.
+
+Combines Q7 ("To what extent are concepts from genetics and heredity
+integrated...") and Q8 ("To what extent are big data and genomics concepts
+integrated...") into one grouped bar chart, comparing the two side by
+side for each integration level. Both questions allow multiple selections
+per response and have option labels containing internal commas, so
+selections are matched by canonical phrase (not comma-split) and unioned
+per institute. Percentages for both series are of each question's own
+total unique institutes (Q7: n=102, Q8: n=103).
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+inst_col = "Institute's Name: "
+
+LEVELS = [
+    'Extensively (e.g., a full course)',
+    'Moderately (e.g., a dedicated module)',
+    'Minimally (e.g., a few lectures)',
+    'Not at all',
+]
+
+def parse_levels(value):
+    text = str(value)
+    return {lvl for lvl in LEVELS if lvl in text}
+
+def institute_level_counts(question_col):
+    """Return (level_counts Series indexed by LEVELS, total_unique_institutes)."""
+    sub = df[[inst_col, question_col]].dropna(subset=[inst_col, question_col]).copy()
+    sub['levels'] = sub[question_col].apply(parse_levels)
+    inst_levels = sub.groupby(inst_col)['levels'].apply(lambda s: set().union(*s))
+    inst_levels = inst_levels[inst_levels.apply(len) > 0]
+    total_institutes = len(inst_levels)
+
+    counts = Counter()
+    for levels in inst_levels:
+        for lvl in levels:
+            counts[lvl] += 1
+    level_counts = pd.Series(counts).reindex(LEVELS).fillna(0).astype(int)
+    return level_counts, total_institutes
+
+# ------------------------------------------------------------------
+# 2. Compute Q7 and Q8 institute-level counts
+# ------------------------------------------------------------------
+q7_col = [c for c in df.columns if 'Q7.' in c][0]
+q8_col = [c for c in df.columns if 'Q8.' in c][0]
+
+q7_counts, q7_total = institute_level_counts(q7_col)
+q8_counts, q8_total = institute_level_counts(q8_col)
+
+# Percentages are of each question's own total unique institutes
+q7_pcts = q7_counts / q7_total * 100
+q8_pcts = q8_counts / q8_total * 100
+
+print(f"Q7 (Genetics & Heredity): n={q7_total} institutes")
+print(q7_counts)
+print(f"\nQ8 (Big Data & Genomics): n={q8_total} institutes")
+print(q8_counts)
+
+# ------------------------------------------------------------------
+# 3. Plot -- grouped vertical bar chart
+# ------------------------------------------------------------------
+short_labels = ['Extensively\n(e.g., a full course)', 'Moderately\n(e.g., a dedicated module)',
+                 'Minimally\n(e.g., a few lectures)', 'Not at all']
+
+x = np.arange(len(LEVELS))
+width = 0.38
+
+fig, ax = plt.subplots(figsize=(15, 10))
+
+bars1 = ax.bar(x - width / 2, q7_counts.values, width,
+                label=f'Genetics & Heredity (n={q7_total} institutes)', color='#1f77b4')
+bars2 = ax.bar(x + width / 2, q8_counts.values, width,
+                label=f'Big Data & Genomics (n={q8_total} institutes)', color='#f5a623')
+
+max_count = max(q7_counts.max(), q8_counts.max())
+for bar, v, p in zip(bars1, q7_counts.values, q7_pcts.values):
+    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_count * 0.015,
+            f"{p:.1f}%", ha='center', va='bottom', fontsize=13, fontweight='bold', color='#333333')
+    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() / 2, f"{v}",
+            ha='center', va='center', fontsize=15, fontweight='bold', color='white')
+for bar, v, p in zip(bars2, q8_counts.values, q8_pcts.values):
+    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_count * 0.015,
+            f"{p:.1f}%", ha='center', va='bottom', fontsize=13, fontweight='bold', color='#333333')
+    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() / 2, f"{v}",
+            ha='center', va='center', fontsize=15, fontweight='bold', color='white')
+
+ax.set_xticks(x)
+ax.set_xticklabels(short_labels, fontsize=12)
+ax.set_ylabel('Number of Institutes / Responses', fontsize=13)
+ax.set_xlabel('Level of Integration', fontsize=13)
+ax.set_title('Integration of Genetics & Heredity vs Big Data & Genomics\n'
+              'into Evolutionary Biology Courses', fontsize=18, fontweight='bold')
+ax.set_ylim(0, max_count * 1.25)
+for spine in ['top', 'right']:
+    ax.spines[spine].set_visible(False)
+ax.axhline(0, color='black', linewidth=1)
+ax.legend(loc='upper right', fontsize=12, frameon=True)
+
+plt.tight_layout(rect=[0, 0.04, 1, 1])
+plt.savefig('q7_vs_q8_integration.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q7_vs_q8_integration.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q7_vs_q8_integration.tif (HD) and q7_vs_q8_integration.png (preview)")
+####################################################
+from google.colab import files
+files.download("q7_vs_q8_integration.tif")
+##################################################################################################################################################
+

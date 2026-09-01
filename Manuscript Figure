@@ -515,8 +515,941 @@ plt.savefig('q7_vs_q8_integration.png', dpi=200, bbox_inches='tight')
 plt.show()
 
 print("\n✅ Chart saved as q7_vs_q8_integration.tif (HD) and q7_vs_q8_integration.png (preview)")
+
 ####################################################
 from google.colab import files
 files.download("q7_vs_q8_integration.tif")
+##################################################################################################################################################
+
+## Scripts for Figure 04
+"""
+Q6: At What Level Are Courses Being Offered? -- Venn Diagram (Unique Institute Distribution)
+Run this in Google Colab.
+
+Extracts institute-level course-level categories from Q6 (multi-select,
+comma-separated), collapses multiple respondents per institute into one
+combined set of levels per institute, groups '3-yr' and '4-yr/Hons'
+Bachelor's variants together, groups 'Diploma' and 'Certificate' together,
+and builds a 3-set Venn diagram (Bachelor's / Master's / Diploma-Certificate)
+plus a side-by-side bar chart of totals. PhD responses are checked for but
+excluded since none were found in the data.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib_venn import venn3
+from matplotlib_venn.layout.venn3 import DefaultLayoutAlgorithm
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+# ------------------------------------------------------------------
+# 2. Identify columns
+# ------------------------------------------------------------------
+inst_col = "Institute's Name: "
+q6_col = [c for c in df.columns if c.strip().startswith('Q6.')][0]
+print("Institute column:", repr(inst_col))
+print("Q6 column       :", repr(q6_col))
+
+# ------------------------------------------------------------------
+# 3. Categorize each response into Bachelor's / Master's / Diploma-Certificate / PhD
+#    - Bachelor's Degree: "Bachelor's Degree - 3 years" OR
+#      "Bachelor's Degree (Honours / with Research) - 4 years" -> merged into one group
+#    - Master's Degree
+#    - Diploma / Certificate: "Diploma course - 2 years" OR "Certificate course - 1 year"
+#      -> merged into one group
+#    - PhD: checked for but not present in this dataset
+# ------------------------------------------------------------------
+sub = df[[inst_col, q6_col]].dropna(subset=[inst_col, q6_col]).copy()
+
+def categorize(value):
+    parts = [p.strip() for p in str(value).split(',') if p.strip()]
+    cats = set()
+    for p in parts:
+        pl = p.lower().replace('\u2019', "'").replace('?', "'")  # normalize curly quotes
+        if 'bachelor' in pl:
+            cats.add("Bachelor's Degree")
+        elif 'master' in pl:
+            cats.add("Master's Degree")
+        elif 'diploma' in pl or 'certificate' in pl:
+            cats.add('Diploma / Certificate')
+        elif 'phd' in pl or 'doctoral' in pl:
+            cats.add('PhD')
+    return cats
+
+sub['levels'] = sub[q6_col].apply(categorize)
+
+institute_levels = (
+    sub.groupby(inst_col)['levels']
+       .apply(lambda series: set().union(*series))
+)
+total_institutes = len(institute_levels)
+print(f"\nTotal unique institutes (answered Q6): {total_institutes}")
+
+phd_found = any('PhD' in s for s in institute_levels)
+print(f"PhD level found in data: {phd_found}")
+
+# ------------------------------------------------------------------
+# 4. Build the 3 sets for the Venn diagram
+# ------------------------------------------------------------------
+B = {i for i, lv in institute_levels.items() if "Bachelor's Degree" in lv}
+M = {i for i, lv in institute_levels.items() if "Master's Degree" in lv}
+D = {i for i, lv in institute_levels.items() if 'Diploma / Certificate' in lv}
+
+b_total, m_total, d_total = len(B), len(M), len(D)
+b_pct = b_total / total_institutes * 100
+m_pct = m_total / total_institutes * 100
+d_pct = d_total / total_institutes * 100
+
+print(f"\nBachelor's Degree total : {b_total} ({b_pct:.1f}%)")
+print(f"Master's Degree total   : {m_total} ({m_pct:.1f}%)")
+print(f"Diploma/Certificate total: {d_total} ({d_pct:.1f}%)")
+
+# ------------------------------------------------------------------
+# 5. Plot -- Venn diagram (left) + bar chart (right)
+# ------------------------------------------------------------------
+fig, (ax_venn, ax_bar) = plt.subplots(1, 2, figsize=(20, 10),
+                                       gridspec_kw={'width_ratios': [1.3, 1]})
+
+fig.suptitle('At What Level Are Courses Being Offered?\n'
+              'Venn Diagram',
+              fontsize=20, fontweight='bold', x=0.28, ha='center')
+
+equal_layout = DefaultLayoutAlgorithm(fixed_subset_sizes=(1, 1, 1, 1, 1, 1, 1))
+v = venn3([B, M, D],
+          set_labels=('', '', ''),  # custom labels added manually below
+          set_colors=('#7fa8d9', '#7fbf8e', '#e8c26a'),
+          alpha=0.45, ax=ax_venn, layout_algorithm=equal_layout)
+
+for label in v.subset_labels:
+    if label:
+        count = int(label.get_text())
+        pct = count / total_institutes * 100
+        label.set_text(f"{count} ({pct:.1f}%)")
+        label.set_fontsize(14)
+        label.set_fontweight('bold')
+        label.set_bbox(dict(facecolor='#fdfdf8', edgecolor='none', boxstyle='round,pad=0.3'))
+
+for patch in v.patches:
+    if patch:
+        patch.set_edgecolor('gray')
+        patch.set_linewidth(1)
+
+# Custom set-title boxes (matching the reference layout/style)
+ax_venn.text(0.02, 1.05, "Bachelor's Degree\n(3-yr & 4-yr/Hons combined)\n"
+             f"Total: {b_total} ({b_pct:.1f}%)",
+             transform=ax_venn.transAxes, fontsize=12, fontweight='bold',
+             ha='left', va='bottom',
+             bbox=dict(facecolor='#cfe0f5', edgecolor='#5b85b8', boxstyle='round,pad=0.4'))
+
+ax_venn.text(0.98, 1.05, f"Master's Degree\nTotal: {m_total} ({m_pct:.1f}%)",
+             transform=ax_venn.transAxes, fontsize=12, fontweight='bold',
+             ha='right', va='bottom',
+             bbox=dict(facecolor='#d3ecd8', edgecolor='#5ba372', boxstyle='round,pad=0.4'))
+
+ax_venn.text(0.5, -0.08, f"Diploma / Certificate\nTotal: {d_total} ({d_pct:.1f}%)",
+             transform=ax_venn.transAxes, fontsize=12, fontweight='bold',
+             ha='center', va='top',
+             bbox=dict(facecolor='#f7e6b8', edgecolor='#c9a23f', boxstyle='round,pad=0.4'))
+
+ax_venn.set_axis_off()
+
+# --- Bar chart ---
+labels = ["Bachelor's\nDegree\n(3-yr & 4-yr)", "Master's\nDegree", "Diploma /\nCertificate"]
+vals = [b_total, m_total, d_total]
+pcts = [b_pct, m_pct, d_pct]
+colors = ['#4a90d9', '#3fa66b', '#e8a13a']
+
+bars = ax_bar.bar(labels, vals, color=colors, width=0.55)
+for bar, v_, p_ in zip(bars, vals, pcts):
+    ax_bar.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(vals) * 0.02,
+                f"{p_:.1f}%", ha='center', va='bottom', fontsize=15, fontweight='bold')
+    ax_bar.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 0.5,
+                f"{v_}", ha='center', va='center', fontsize=18, fontweight='bold', color='white')
+
+ax_bar.set_ylabel('Number of Unique Institutes', fontsize=13)
+ax_bar.set_title('All 3 Levels\n— Institutes Count', fontsize=15, fontweight='bold')
+ax_bar.set_ylim(0, max(vals) * 1.20)
+ax_bar.axhline(0, color='black', linewidth=1)
+for spine in ['top', 'right']:
+    ax_bar.spines[spine].set_visible(False)
+
+fig.text(0.5, 0.0,
+          f"Total unique institutes: {total_institutes}  |  "
+          f"Institutes may offer courses at multiple levels",
+          ha='center', fontsize=11, color='gray')
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.94])
+plt.savefig('q6_course_levels_venn.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q6_course_levels_venn.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q6_course_levels_venn.tif (HD) and q6_course_levels_venn.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q6_course_levels_venn.tif")
+##################################################################################################################################################
+
+## Scripts for Figure 05
+"""
+Q16: Key Tools, Instruments & Setups Available in Labs
+Run this in Google Colab.
+
+Extracts institute-level equipment categories from Q16 (multi-select,
+comma-separated), collapses multiple respondents per institute into one
+combined set per institute, and counts how many institutes fall into each
+category. "Other / Not Specified" is only counted for institutes where it
+is the ONLY category reported (i.e. no real equipment category was also
+given) -- matching the reference chart's logic.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+# ------------------------------------------------------------------
+# 2. Identify columns
+# ------------------------------------------------------------------
+inst_col = "Institute's Name: "
+q16_col = [c for c in df.columns if c.strip().startswith('Q16.')][0]
+print("Institute column:", repr(inst_col))
+print("Q16 column      :", repr(q16_col))
+
+OTHER_LABEL = 'Other / Not Specified'
+
+# ------------------------------------------------------------------
+# 3. Build institute-level category sets
+#    Each response is a comma-separated list of category labels. Multiple
+#    respondents per institute are unioned into a single set per institute.
+# ------------------------------------------------------------------
+sub = df[[inst_col, q16_col]].dropna(subset=[inst_col, q16_col]).copy()
+
+def parse_categories(value):
+    return {p.strip() for p in str(value).split(',') if p.strip()}
+
+sub['categories'] = sub[q16_col].apply(parse_categories)
+
+institute_categories = (
+    sub.groupby(inst_col)['categories']
+       .apply(lambda series: set().union(*series))
+)
+institute_categories = institute_categories[institute_categories.apply(len) > 0]
+total_institutes = len(institute_categories)
+print(f"\nTotal unique institutes (answered Q16): {total_institutes}")
+
+# ------------------------------------------------------------------
+# 4. Count institutes per category.
+#    "Other / Not Specified" only counts institutes where it's the SOLE
+#    category (i.e. no specific equipment category was also mentioned).
+#    All other categories count every institute that mentioned them,
+#    regardless of what else was mentioned.
+# ------------------------------------------------------------------
+counts = Counter()
+for cats in institute_categories:
+    if cats == {OTHER_LABEL}:
+        counts[OTHER_LABEL] += 1
+    for cat in cats:
+        if cat != OTHER_LABEL:
+            counts[cat] += 1
+
+category_counts = (
+    pd.Series(counts)
+      .sort_values(ascending=False)
+      .rename('Count')
+      .to_frame()
+)
+category_counts['Pct'] = category_counts['Count'] / total_institutes * 100
+print("\nCategory counts:")
+print(category_counts)
+
+# ------------------------------------------------------------------
+# 5. Plot -- horizontal bar chart, largest on top
+# ------------------------------------------------------------------
+plot_data = category_counts.sort_values('Count', ascending=True)  # smallest at bottom for barh
+
+color_map = {
+    'PCR & Molecular Biology Equipment': '#1f5fa8',
+    'Other / Not Specified': '#2e9e5b',
+    'Bioinformatics & Computational Tools': '#e8a13a',
+    'Sequencing & Genomics Tools': '#d9534f',
+    'Cell Culture & Wet Lab Facilities': '#7b52ae',
+    'Microscopy & Imaging Equipment': '#12a68a',
+}
+colors = [color_map.get(idx, '#999999') for idx in plot_data.index]
+
+fig, ax = plt.subplots(figsize=(15, 10))
+bars = ax.barh(plot_data.index, plot_data['Count'], color=colors, height=0.65)
+
+max_count = max(plot_data['Count'])
+for bar, v, p in zip(bars, plot_data['Count'], plot_data['Pct']):
+    w = bar.get_width()
+    ax.text(w / 2, bar.get_y() + bar.get_height() / 2, f"{v}",
+            ha='center', va='center', fontsize=16, fontweight='bold', color='white')
+    ax.text(w + max_count * 0.035, bar.get_y() + bar.get_height() / 2, f"{p:.1f}%",
+            ha='left', va='center', fontsize=14, fontweight='bold', color='black')
+
+ax.set_xlabel('Number of Unique Institutes', fontsize=14)
+ax.set_title('Key Tools, Instruments & Setups Available in Labs',
+              fontsize=19, fontweight='bold')
+ax.set_xlim(0, max_count * 1.25)
+for spine in ['top', 'right', 'left']:
+    ax.spines[spine].set_visible(False)
+ax.axvline(0, color='black', linewidth=1)
+ax.tick_params(axis='y', labelsize=13)
+for label in ax.get_yticklabels():
+    label.set_fontweight('bold')
+
+# Legend (category -> color), largest-first order
+legend_order = plot_data.index[::-1]
+handles = [plt.Rectangle((0, 0), 1, 1, color=color_map.get(cat, '#999999')) for cat in legend_order]
+ax.legend(handles, legend_order, title='Category Legend', loc='upper center',
+          bbox_to_anchor=(0.5, -0.15), ncol=3, fontsize=12, title_fontsize=13, frameon=True)
+
+fig.text(0.99, 0.01,
+          f"Total unique institutes: {total_institutes}  |  An institute may appear in "
+          f"multiple categories  |  % based on total unique institutes",
+          ha='right', fontsize=10, color='gray')
+
+plt.tight_layout(rect=[0, 0.05, 1, 1])
+plt.savefig('q16_lab_tools.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q16_lab_tools.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q16_lab_tools.tif (HD) and q16_lab_tools.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q16_lab_tools.tif")
+##################################################################################################################################################
+
+## Scripts for Figure 06
+"""
+Awareness of Free Online Evolutionary Biology Learning Modules
+And What are the courses?
+(Combined: Q13 Yes/No awareness  +  Q14 platform UpSet plot)
+Run this in Google Colab.
+
+Merges the two previously separate charts into one stacked figure:
+  - Top    : Q13 institute-level Yes/No awareness summary (majority
+             response per institute, ties broken toward "Yes")
+  - Bottom : Q14 UpSet plot of which free online platforms institutes
+             are aware of, with exact-combination bars, a platform
+             membership matrix, and per-platform totals.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+inst_col = "Institute's Name: "
+
+# ==================================================================
+# PANEL 1 DATA -- Q13: Awareness Yes/No (institute-level majority)
+# ==================================================================
+q13_col = [c for c in df.columns if 'Q13.' in c][0]
+
+sub13 = df[[inst_col, q13_col]].dropna(subset=[inst_col, q13_col]).copy()
+sub13[q13_col] = sub13[q13_col].astype(str).str.strip()
+
+def majority_response(vals):
+    yes = (vals == 'Yes').sum()
+    no = (vals == 'No').sum()
+    return 'Yes' if yes >= no else 'No'
+
+institute_response = sub13.groupby(inst_col)[q13_col].apply(majority_response)
+total_institutes_13 = len(institute_response)
+
+counts13 = institute_response.value_counts()
+yes_inst = counts13.get('Yes', 0)
+no_inst = counts13.get('No', 0)
+yes_pct = yes_inst / total_institutes_13 * 100
+no_pct = no_inst / total_institutes_13 * 100
+
+print("Panel 1 - Q13 Awareness:")
+print(f"  Yes: {yes_inst} ({yes_pct:.1f}%)   No: {no_inst} ({no_pct:.1f}%)   Total: {total_institutes_13}")
+
+# ==================================================================
+# PANEL 2 DATA -- Q14: Platform UpSet plot
+# ==================================================================
+q14_col = [c for c in df.columns if 'Q14.' in c][0]
+
+sub14 = df[[inst_col, q14_col]].dropna(subset=[inst_col, q14_col]).copy()
+
+def parse_platforms(value):
+    return {p.strip() for p in str(value).split(',') if p.strip()}
+
+sub14['platforms'] = sub14[q14_col].apply(parse_platforms)
+institute_platforms = sub14.groupby(inst_col)['platforms'].apply(lambda s: set().union(*s))
+institute_platforms = institute_platforms[institute_platforms.apply(len) > 0]
+total_institutes_14 = len(institute_platforms)
+
+PLATFORM_ORDER = ['iBiology', 'YouTube', 'SWAYAM', 'SMBE IDEA', 'Others', 'NPTEL', 'Coursera']
+
+combo_counts = Counter(frozenset(s) for s in institute_platforms)
+combo_counts = dict(sorted(combo_counts.items(), key=lambda kv: -kv[1]))
+platform_totals = {p: sum(1 for s in institute_platforms if p in s) for p in PLATFORM_ORDER}
+
+print(f"\nPanel 2 - Q14 Platforms: n={total_institutes_14} institutes")
+print(combo_counts)
+print(platform_totals)
+
+def classify(combo):
+    if combo == {'YouTube', 'Coursera'}:
+        return 'green'
+    if combo == {'YouTube'}:
+        return 'orange'
+    if {'YouTube', 'Coursera', 'iBiology'}.issubset(combo):
+        return 'red'
+    return 'blue'
+
+COLOR_HEX = {'red': '#d9534f', 'green': '#2e9e5b', 'orange': '#e8a13a', 'blue': '#1f5fa8'}
+
+combos = list(combo_counts.keys())
+combo_vals = list(combo_counts.values())
+bar_colors = [COLOR_HEX[classify(c)] for c in combos]
+
+# ------------------------------------------------------------------
+# 2. Plot -- combined stacked figure using subfigures
+# ------------------------------------------------------------------
+fig = plt.figure(figsize=(20, 20))
+subfig_top, subfig_bottom = fig.subfigures(2, 1, height_ratios=[1, 1.5], hspace=0.05)
+
+# ===================== TOP: Q13 Yes/No =====================
+ax1 = subfig_top.subplots(1, 1)
+labels1 = ['Yes\n(Aware)', 'No\n(Not Aware)']
+vals1 = [yes_inst, no_inst]
+pcts1 = [yes_pct, no_pct]
+colors1 = ['#2e9e5b', '#d9534f']
+
+bars1 = ax1.bar(labels1, vals1, color=colors1, width=0.5)
+max1 = max(vals1)
+for bar, v, p in zip(bars1, vals1, pcts1):
+    ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max1 * 0.02,
+              f"{p:.1f}%", ha='center', va='bottom', fontsize=20, fontweight='bold', color='#333333')
+    ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() / 2, f"{v}",
+              ha='center', va='center', fontsize=26, fontweight='bold', color='white')
+
+ax1.set_ylabel('Number of Unique Institutes', fontsize=14, fontweight='bold')
+ax1.set_ylim(0, max1 * 1.35)
+for spine in ['top', 'right']:
+    ax1.spines[spine].set_visible(False)
+ax1.axhline(0, color='black', linewidth=1)
+for label in ax1.get_xticklabels():
+    label.set_fontweight('bold')
+    label.set_fontsize(13)
+
+subfig_top.text(0.99, -0.02,
+                  f"Total unique institutes: {total_institutes_13}  |  "
+                  f"Each institute counted once (majority response)",
+                  ha='right', fontsize=11, color='gray')
+
+subfig_top.suptitle('Awareness of Free Online Evolutionary Biology Learning Modules\n'
+                     'And What are the courses?', fontsize=20, fontweight='bold')
+
+# ===================== BOTTOM: Q14 UpSet =====================
+n_combos = len(combos)
+n_platforms = len(PLATFORM_ORDER)
+
+gs = gridspec.GridSpec(
+    2, 3, figure=subfig_bottom,
+    width_ratios=[1, 1.15, 5.2],
+    height_ratios=[2.3, 1.8],
+    wspace=0.05, hspace=0.05
+)
+
+ax_bar = subfig_bottom.add_subplot(gs[0, 2])
+ax_matrix = subfig_bottom.add_subplot(gs[1, 2], sharex=ax_bar)
+ax_labels = subfig_bottom.add_subplot(gs[1, 1], sharey=ax_matrix)
+ax_totals = subfig_bottom.add_subplot(gs[1, 0], sharey=ax_matrix)
+
+x = range(n_combos)
+bars = ax_bar.bar(x, combo_vals, color=bar_colors, width=0.6)
+for xi, c in zip(x, combo_vals):
+    ax_bar.text(xi, c + max(combo_vals) * 0.02, str(c),
+                ha='center', va='bottom', fontsize=13, fontweight='bold')
+ax_bar.set_ylabel('Number of Institutes', fontsize=13, fontweight='bold')
+ax_bar.spines[['top', 'right']].set_visible(False)
+ax_bar.tick_params(axis='x', bottom=False, labelbottom=False)
+ax_bar.axhline(0, color='black', linewidth=1)
+
+for row_i in range(n_platforms):
+    y = n_platforms - 1 - row_i
+    ax_matrix.axhspan(y - 0.5, y + 0.5,
+                       color='#f2f2f2' if row_i % 2 == 0 else 'white', zorder=0)
+
+for col_i, combo in enumerate(combos):
+    member_rows = [n_platforms - 1 - PLATFORM_ORDER.index(p) for p in PLATFORM_ORDER if p in combo]
+    color = bar_colors[col_i]
+    if len(member_rows) > 1:
+        ax_matrix.plot([col_i, col_i], [min(member_rows), max(member_rows)],
+                        color=color, linewidth=2.5, zorder=1)
+    for row_i in range(n_platforms):
+        y = n_platforms - 1 - row_i
+        is_member = PLATFORM_ORDER[row_i] in combo
+        ax_matrix.scatter(col_i, y,
+                           s=200 if is_member else 130,
+                           color=color if is_member else '#d9dee3',
+                           zorder=2, edgecolors='none')
+
+ax_matrix.set_yticks(range(n_platforms))
+ax_matrix.set_yticklabels([])
+ax_matrix.set_xticks(x)
+ax_matrix.set_xticklabels([])
+ax_matrix.set_xlim(-0.6, n_combos - 0.4)
+ax_matrix.set_ylim(-0.6, n_platforms - 0.4)
+for spine in ax_matrix.spines.values():
+    spine.set_visible(False)
+ax_matrix.tick_params(left=False, bottom=False)
+ax_matrix.axvline(-0.6, color='black', linewidth=1)
+
+for row_i, platform in enumerate(PLATFORM_ORDER):
+    y = n_platforms - 1 - row_i
+    ax_labels.text(1.0, y, platform, ha='right', va='center', fontsize=14, fontweight='bold')
+ax_labels.set_xlim(0, 1)
+ax_labels.axis('off')
+
+totals_ordered = [platform_totals[p] for p in PLATFORM_ORDER[::-1]]
+ax_totals.barh(range(n_platforms), totals_ordered, color='#1f5fa8', height=0.6)
+ax_totals.invert_xaxis()
+ax_totals.set_xlabel('Total Institutes\nAware of Platform', fontsize=10)
+ax_totals.tick_params(left=False, labelleft=False)
+for spine in ['top', 'left']:
+    ax_totals.spines[spine].set_visible(False)
+
+legend_handles = [
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['blue']),
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['red']),
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['green']),
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['orange']),
+]
+legend_labels = [
+    'General Combination',
+    'YouTube + Coursera + iBiology',
+    'YouTube + Coursera Only',
+    'YouTube Only',
+]
+subfig_bottom.legend(legend_handles, legend_labels, title='Highlighted Combinations',
+                      loc='center right', fontsize=13, title_fontsize=15, frameon=True,
+                      bbox_to_anchor=(1.12, 0.65))
+
+subfig_bottom.suptitle('Free Online Learning Platforms for Evolutionary Biology\n'
+                        'Known by Respondents', fontsize=20, fontweight='bold')
+
+subfig_bottom.text(0.5, -0.02,
+                    f"Total unique institutes: {total_institutes_14}   |   Each dot = an online platform   |   "
+                    f"Connected dots = platforms known together   |   Bar height = institutes with that exact combination",
+                    ha='center', fontsize=11, color='gray')
+
+plt.savefig('q13_q14_combined.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q13_q14_combined.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q13_q14_combined.tif (HD) and q13_q14_combined.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q13_q14_combined.tif")
+##################################################################################################################################################
+
+## Scripts for Figure 07
+"""
+Q15: Overall Challenge Frequency -- Unique Institute Count per Challenge
+Run this in Google Colab.
+
+Extracts institute-level challenge categories from Q15 (a "select all that
+apply" question whose option text itself contains commas, e.g.
+"Lack of institutional infrastructure (e.g., HPC, sequencing facilities)").
+A naive comma-split breaks these apart, so this script matches against the
+known canonical option phrases instead. Multiple respondents per institute
+are combined (union) into one set of challenges per institute.
+
+Note: the chart's "Limited Access to Field Stations" bucket combines two
+separate survey options -- "Access to field stations" and "Limited access
+to research data/databases" -- since an institute reporting either kind of
+limited access is counted once under this combined label.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+# ------------------------------------------------------------------
+# 2. Identify columns
+# ------------------------------------------------------------------
+inst_col = "Institute's Name: "
+q15_col = [c for c in df.columns if 'Q15.' in c][0]
+print("Institute column:", repr(inst_col))
+print("Q15 column      :", repr(q15_col))
+
+# ------------------------------------------------------------------
+# 3. Canonical option phrases (matched by substring, NOT comma-split,
+#    since several option labels contain their own internal commas)
+# ------------------------------------------------------------------
+CANONICAL_OPTIONS = [
+    'Lack of institutional infrastructure',
+    'Lack of skilled personnel',
+    'Limited access to research data/databases',
+    'Lack of funding',
+    'Access to field stations',
+    'Inflexible curriculum',
+    'Administrative hurdles',
+    'Student difficulty in understanding core concepts or numerical problems',
+    'Others',
+]
+
+def parse_challenges(value):
+    text = str(value)
+    return {opt for opt in CANONICAL_OPTIONS if opt in text}
+
+sub = df[[inst_col, q15_col]].dropna(subset=[inst_col, q15_col]).copy()
+sub['challenges'] = sub[q15_col].apply(parse_challenges)
+
+institute_challenges = (
+    sub.groupby(inst_col)['challenges']
+       .apply(lambda series: set().union(*series))
+)
+institute_challenges = institute_challenges[institute_challenges.apply(len) > 0]
+total_institutes = len(institute_challenges)
+print(f"\nTotal unique institutes (answered Q15): {total_institutes}")
+
+# ------------------------------------------------------------------
+# 4. Count institutes per display category.
+#    "Access to field stations" and "Limited access to research
+#    data/databases" are combined into one "Limited Access to Field
+#    Stations" bucket (an institute counts once even if it reported both).
+# ------------------------------------------------------------------
+DISPLAY_LABELS = {
+    'Lack of institutional infrastructure': 'Lack of Institutional Infrastructure',
+    'Lack of funding': 'Lack of Funding',
+    'Lack of skilled personnel': 'Lack of Skilled Personnel',
+    'Student difficulty in understanding core concepts or numerical problems':
+        'Student Difficulty in Understanding',
+    'Administrative hurdles': 'Administrative Hurdles',
+    'Inflexible curriculum': 'Inflexible Curriculum',
+}
+FIELD_STATION_GROUP = {'Access to field stations', 'Limited access to research data/databases'}
+FIELD_STATION_LABEL = 'Limited Access to Field Stations'
+
+counts = Counter()
+for challenges in institute_challenges:
+    for raw, display in DISPLAY_LABELS.items():
+        if raw in challenges:
+            counts[display] += 1
+    if challenges & FIELD_STATION_GROUP:
+        counts[FIELD_STATION_LABEL] += 1
+
+challenge_counts = (
+    pd.Series(counts)
+      .sort_values(ascending=False)
+      .rename('Count')
+      .to_frame()
+)
+challenge_counts['Pct'] = challenge_counts['Count'] / total_institutes * 100
+print("\nChallenge counts:")
+print(challenge_counts)
+
+# ------------------------------------------------------------------
+# 5. Plot -- horizontal bar chart, largest on top
+# ------------------------------------------------------------------
+plot_data = challenge_counts.sort_values('Count', ascending=True)  # smallest at bottom for barh
+
+color_map = {
+    'Lack of Institutional Infrastructure': '#1f5fa8',
+    'Lack of Funding': '#d9534f',
+    'Lack of Skilled Personnel': '#2e9e5b',
+    'Limited Access to Field Stations': '#e8a13a',
+    'Student Difficulty in Understanding': '#7b52ae',
+    'Administrative Hurdles': '#12a68a',
+    'Inflexible Curriculum': '#f0871e',
+}
+colors = [color_map.get(idx, '#999999') for idx in plot_data.index]
+
+fig, ax = plt.subplots(figsize=(16, 10))
+bars = ax.barh(plot_data.index, plot_data['Count'], color=colors, height=0.65)
+
+max_count = max(plot_data['Count'])
+for bar, v, p in zip(bars, plot_data['Count'], plot_data['Pct']):
+    w = bar.get_width()
+    ax.text(w / 2, bar.get_y() + bar.get_height() / 2, f"{v}",
+            ha='center', va='center', fontsize=18, fontweight='bold', color='white')
+    ax.text(w + max_count * 0.02, bar.get_y() + bar.get_height() / 2, f"{p:.1f}%",
+            ha='left', va='center', fontsize=15, fontweight='bold', color='black')
+
+ax.set_xlabel('Number of Unique Institutes Reporting', fontsize=14)
+ax.set_title('Overall Challenge Frequency',
+              fontsize=20, fontweight='bold')
+ax.set_xlim(0, max_count * 1.22)
+for spine in ['top', 'right', 'left']:
+    ax.spines[spine].set_visible(False)
+ax.axvline(0, color='black', linewidth=1)
+ax.tick_params(axis='y', labelsize=14)
+for label in ax.get_yticklabels():
+    label.set_fontweight('bold')
+
+fig.text(0.99, 0.01,
+          f"Total unique institutes: {total_institutes}  |  "
+          f"Each institute counted once per challenge",
+          ha='right', fontsize=11, color='gray')
+
+plt.tight_layout(rect=[0, 0.03, 1, 1])
+plt.savefig('q15_challenge_frequency.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q15_challenge_frequency.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q15_challenge_frequency.tif (HD) and q15_challenge_frequency.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q15_challenge_frequency.tif")
+##################################################################################################################################################
+
+## Scripts for Figure 08
+"""
+Q17: What Resources Would Most Help You in Teaching Evolutionary Genetics
+or Wildlife Genetics? -- Unique Institute-wise Bar Chart
+Run this in Google Colab.
+
+Extracts institute-level resource-need categories from Q17 (a "select all
+that apply" question whose option text itself contains commas and
+parentheses, e.g. "Basic Equipment (e.g.., PCR, - 80?C Freezers, etc.)").
+A naive comma-split breaks these apart, so this script matches against the
+known canonical option phrases instead. Multiple respondents per institute
+are combined (union) into one set of resource needs per institute.
+
+Note: the "Access to field stations" option is present in the raw data but
+is not one of the 8 categories shown in the reference chart, so it is
+excluded from the plotted categories here too.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+# ------------------------------------------------------------------
+# 2. Identify columns
+# ------------------------------------------------------------------
+inst_col = "Institute's Name: "
+q17_col = [c for c in df.columns if 'Q17.' in c][0]
+print("Institute column:", repr(inst_col))
+print("Q17 column      :", repr(q17_col))
+
+# ------------------------------------------------------------------
+# 3. Canonical option phrases (matched by substring, NOT comma-split,
+#    since several option labels contain their own internal commas)
+# ------------------------------------------------------------------
+CANONICAL_TO_DISPLAY = {
+    'More funding for research and teaching': 'More Funding for\nResearch & Teaching',
+    'Training workshops for faculty': 'Training Workshops\nfor Faculty',
+    'New teaching materials': 'New Teaching Materials\n(Case Studies, Datasets)',
+    'Access to advanced computational infrastructure': 'Access to Advanced\nComputational Infrastructure',
+    'Industry collaborations': 'Industry Collaborations\n& Student Internships',
+    'Access to trained expert or consultant': 'Access to Trained\nExperts & Consultants',
+    'Access to journals': 'Access to Journals\n& Research Papers',
+    'Basic Equipment': 'Basic Lab Equipment\n(PCR, Freezers, etc.)',
+    # Present in the raw data but not part of the 8 plotted categories:
+    # 'Access to field stations',
+}
+
+def parse_resources(value):
+    text = str(value)
+    return {canon for canon in CANONICAL_TO_DISPLAY if canon in text}
+
+sub = df[[inst_col, q17_col]].dropna(subset=[inst_col, q17_col]).copy()
+sub['resources'] = sub[q17_col].apply(parse_resources)
+
+institute_resources = (
+    sub.groupby(inst_col)['resources']
+       .apply(lambda series: set().union(*series))
+)
+institute_resources = institute_resources[institute_resources.apply(len) > 0]
+total_institutes = len(institute_resources)
+print(f"\nTotal unique institutes (answered Q17): {total_institutes}")
+
+# ------------------------------------------------------------------
+# 4. Count institutes per category (multi-select, so % can exceed 100%
+#    in total, but each institute is counted at most once per category)
+# ------------------------------------------------------------------
+counts = Counter()
+for resources in institute_resources:
+    for canon in resources:
+        counts[CANONICAL_TO_DISPLAY[canon]] += 1
+
+resource_counts = (
+    pd.Series(counts)
+      .sort_values(ascending=False)
+      .rename('Count')
+      .to_frame()
+)
+resource_counts['Pct'] = resource_counts['Count'] / total_institutes * 100
+print("\nResource-need counts:")
+print(resource_counts)
+
+# ------------------------------------------------------------------
+# 5. Plot -- horizontal bar chart, largest on top, single-hue gradient
+# ------------------------------------------------------------------
+plot_data = resource_counts.sort_values('Count', ascending=True)  # smallest at bottom for barh
+
+n = len(plot_data)
+cmap = plt.cm.Blues
+# Darkest (navy-ish) for the largest bar, lightest for the smallest --
+# plot_data is smallest-to-largest, so reverse the shade order to match.
+shades = [cmap(0.35 + 0.55 * i / (n - 1)) for i in range(n)]
+
+fig, ax = plt.subplots(figsize=(17, 12))
+bars = ax.barh(plot_data.index, plot_data['Count'], color=shades, height=0.65)
+
+max_count = max(plot_data['Count'])
+for bar, v, p in zip(bars, plot_data['Count'], plot_data['Pct']):
+    w = bar.get_width()
+    ax.text(w / 2, bar.get_y() + bar.get_height() / 2, f"{v}",
+            ha='center', va='center', fontsize=17, fontweight='bold', color='white')
+    ax.text(w + max_count * 0.015, bar.get_y() + bar.get_height() / 2, f"{p:.1f}%",
+            ha='left', va='center', fontsize=14, fontweight='bold', color='black')
+
+ax.set_xlabel('Number of Unique Institutes Requesting This Resource', fontsize=14)
+ax.set_title('What Resources Would Most Help You in Teaching\n'
+              'Evolutionary Genetics or Wildlife Genetics?',
+              fontsize=18, fontweight='bold')
+ax.set_xlim(0, 100)
+for spine in ['top', 'right', 'left']:
+    ax.spines[spine].set_visible(False)
+ax.axvline(0, color='black', linewidth=1)
+ax.tick_params(axis='y', labelsize=12)
+for label in ax.get_yticklabels():
+    label.set_fontweight('bold')
+
+# Legend (category -> color), largest-first order, 3 columns
+legend_order = plot_data.index[::-1]
+legend_colors = shades[::-1]
+handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in legend_colors]
+ax.legend(handles, [l.replace('\n', ' ') for l in legend_order], title='Resource Categories',
+          loc='upper center', bbox_to_anchor=(0.5, -0.13), ncol=3, fontsize=11.5,
+          title_fontsize=13, frameon=True)
+
+fig.text(0.99, 0.005,
+          f"Total unique institutes: {total_institutes}   |   "
+          f"Multi-select — % may exceed 100%   |   "
+          f"Each institute counted once per resource category",
+          ha='right', fontsize=10.5, color='gray')
+
+plt.tight_layout(rect=[0, 0.08, 1, 1])
+plt.savefig('q17_resource_needs.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q17_resource_needs.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q17_resource_needs.tif (HD) and q17_resource_needs.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q17_resource_needs.tif")
 ##################################################################################################################################################
 

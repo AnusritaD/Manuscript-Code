@@ -159,6 +159,8 @@ plt.show()
 print("\n✅ Chart saved as q17_resource_needs.tif (HD) and q17_resource_needs.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q17_resource_needs.tif")
 ##################################################################################################################################################

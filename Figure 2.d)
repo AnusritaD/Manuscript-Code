@@ -1,0 +1,190 @@
+## Scripts for Figure 04
+### Figure 2.d) Academic level at which relevant courses are offered.
+"""
+Q6: At What Level Are Courses Being Offered? -- Venn Diagram (Unique Institute Distribution)
+Run this in Google Colab.
+
+Extracts institute-level course-level categories from Q6 (multi-select,
+comma-separated), collapses multiple respondents per institute into one
+combined set of levels per institute, groups '3-yr' and '4-yr/Hons'
+Bachelor's variants together, groups 'Diploma' and 'Certificate' together,
+and builds a 3-set Venn diagram (Bachelor's / Master's / Diploma-Certificate)
+plus a side-by-side bar chart of totals. PhD responses are checked for but
+excluded since none were found in the data.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib_venn import venn3
+from matplotlib_venn.layout.venn3 import DefaultLayoutAlgorithm
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+# ------------------------------------------------------------------
+# 2. Identify columns
+# ------------------------------------------------------------------
+inst_col = "Institute's Name: "
+q6_col = [c for c in df.columns if c.strip().startswith('Q6.')][0]
+print("Institute column:", repr(inst_col))
+print("Q6 column       :", repr(q6_col))
+
+# ------------------------------------------------------------------
+# 3. Categorize each response into Bachelor's / Master's / Diploma-Certificate / PhD
+#    - Bachelor's Degree: "Bachelor's Degree - 3 years" OR
+#      "Bachelor's Degree (Honours / with Research) - 4 years" -> merged into one group
+#    - Master's Degree
+#    - Diploma / Certificate: "Diploma course - 2 years" OR "Certificate course - 1 year"
+#      -> merged into one group
+#    - PhD: checked for but not present in this dataset
+# ------------------------------------------------------------------
+sub = df[[inst_col, q6_col]].dropna(subset=[inst_col, q6_col]).copy()
+
+def categorize(value):
+    parts = [p.strip() for p in str(value).split(',') if p.strip()]
+    cats = set()
+    for p in parts:
+        pl = p.lower().replace('\u2019', "'").replace('?', "'")  # normalize curly quotes
+        if 'bachelor' in pl:
+            cats.add("Bachelor's Degree")
+        elif 'master' in pl:
+            cats.add("Master's Degree")
+        elif 'diploma' in pl or 'certificate' in pl:
+            cats.add('Diploma / Certificate')
+        elif 'phd' in pl or 'doctoral' in pl:
+            cats.add('PhD')
+    return cats
+
+sub['levels'] = sub[q6_col].apply(categorize)
+
+institute_levels = (
+    sub.groupby(inst_col)['levels']
+       .apply(lambda series: set().union(*series))
+)
+total_institutes = len(institute_levels)
+print(f"\nTotal unique institutes (answered Q6): {total_institutes}")
+
+phd_found = any('PhD' in s for s in institute_levels)
+print(f"PhD level found in data: {phd_found}")
+
+# ------------------------------------------------------------------
+# 4. Build the 3 sets for the Venn diagram
+# ------------------------------------------------------------------
+B = {i for i, lv in institute_levels.items() if "Bachelor's Degree" in lv}
+M = {i for i, lv in institute_levels.items() if "Master's Degree" in lv}
+D = {i for i, lv in institute_levels.items() if 'Diploma / Certificate' in lv}
+
+b_total, m_total, d_total = len(B), len(M), len(D)
+b_pct = b_total / total_institutes * 100
+m_pct = m_total / total_institutes * 100
+d_pct = d_total / total_institutes * 100
+
+print(f"\nBachelor's Degree total : {b_total} ({b_pct:.1f}%)")
+print(f"Master's Degree total   : {m_total} ({m_pct:.1f}%)")
+print(f"Diploma/Certificate total: {d_total} ({d_pct:.1f}%)")
+
+# ------------------------------------------------------------------
+# 5. Plot -- Venn diagram (left) + bar chart (right)
+# ------------------------------------------------------------------
+fig, (ax_venn, ax_bar) = plt.subplots(1, 2, figsize=(20, 10),
+                                       gridspec_kw={'width_ratios': [1.3, 1]})
+
+fig.suptitle('At What Level Are Courses Being Offered?\n'
+              'Venn Diagram',
+              fontsize=20, fontweight='bold', x=0.28, ha='center')
+
+equal_layout = DefaultLayoutAlgorithm(fixed_subset_sizes=(1, 1, 1, 1, 1, 1, 1))
+v = venn3([B, M, D],
+          set_labels=('', '', ''),  # custom labels added manually below
+          set_colors=('#7fa8d9', '#7fbf8e', '#e8c26a'),
+          alpha=0.45, ax=ax_venn, layout_algorithm=equal_layout)
+
+for label in v.subset_labels:
+    if label:
+        count = int(label.get_text())
+        pct = count / total_institutes * 100
+        label.set_text(f"{count} ({pct:.1f}%)")
+        label.set_fontsize(14)
+        label.set_fontweight('bold')
+        label.set_bbox(dict(facecolor='#fdfdf8', edgecolor='none', boxstyle='round,pad=0.3'))
+
+for patch in v.patches:
+    if patch:
+        patch.set_edgecolor('gray')
+        patch.set_linewidth(1)
+
+# Custom set-title boxes (matching the reference layout/style)
+ax_venn.text(0.02, 1.05, "Bachelor's Degree\n(3-yr & 4-yr/Hons combined)\n"
+             f"Total: {b_total} ({b_pct:.1f}%)",
+             transform=ax_venn.transAxes, fontsize=12, fontweight='bold',
+             ha='left', va='bottom',
+             bbox=dict(facecolor='#cfe0f5', edgecolor='#5b85b8', boxstyle='round,pad=0.4'))
+
+ax_venn.text(0.98, 1.05, f"Master's Degree\nTotal: {m_total} ({m_pct:.1f}%)",
+             transform=ax_venn.transAxes, fontsize=12, fontweight='bold',
+             ha='right', va='bottom',
+             bbox=dict(facecolor='#d3ecd8', edgecolor='#5ba372', boxstyle='round,pad=0.4'))
+
+ax_venn.text(0.5, -0.08, f"Diploma / Certificate\nTotal: {d_total} ({d_pct:.1f}%)",
+             transform=ax_venn.transAxes, fontsize=12, fontweight='bold',
+             ha='center', va='top',
+             bbox=dict(facecolor='#f7e6b8', edgecolor='#c9a23f', boxstyle='round,pad=0.4'))
+
+ax_venn.set_axis_off()
+
+# --- Bar chart ---
+labels = ["Bachelor's\nDegree\n(3-yr & 4-yr)", "Master's\nDegree", "Diploma /\nCertificate"]
+vals = [b_total, m_total, d_total]
+pcts = [b_pct, m_pct, d_pct]
+colors = ['#4a90d9', '#3fa66b', '#e8a13a']
+
+bars = ax_bar.bar(labels, vals, color=colors, width=0.55)
+for bar, v_, p_ in zip(bars, vals, pcts):
+    ax_bar.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(vals) * 0.02,
+                f"{p_:.1f}%", ha='center', va='bottom', fontsize=15, fontweight='bold')
+    ax_bar.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 0.5,
+                f"{v_}", ha='center', va='center', fontsize=18, fontweight='bold', color='white')
+
+ax_bar.set_ylabel('Number of Unique Institutes', fontsize=13)
+ax_bar.set_title('All 3 Levels\n— Institutes Count', fontsize=15, fontweight='bold')
+ax_bar.set_ylim(0, max(vals) * 1.20)
+ax_bar.axhline(0, color='black', linewidth=1)
+for spine in ['top', 'right']:
+    ax_bar.spines[spine].set_visible(False)
+
+fig.text(0.5, 0.0,
+          f"Total unique institutes: {total_institutes}  |  "
+          f"Institutes may offer courses at multiple levels",
+          ha='center', fontsize=11, color='gray')
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.94])
+plt.savefig('q6_course_levels_venn.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q6_course_levels_venn.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q6_course_levels_venn.tif (HD) and q6_course_levels_venn.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q6_course_levels_venn.tif")
+##################################################################################################################################################

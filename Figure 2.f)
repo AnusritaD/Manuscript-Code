@@ -246,6 +246,8 @@ plt.show()
 print("\n✅ Chart saved as q13_q14_combined.tif (HD) and q13_q14_combined.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q13_q14_combined.tif")
 #####################################################################################################################################################

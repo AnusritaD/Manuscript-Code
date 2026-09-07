@@ -149,6 +149,8 @@ plt.show()
 print("\n✅ Chart saved as course_offerings_overview.tif (HD) and course_offerings_overview.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("course_offerings_overview.tif")
 #####################################################################################################################################################

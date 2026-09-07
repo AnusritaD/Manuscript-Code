@@ -1,0 +1,164 @@
+## Scripts for Figure 08
+### Figure 3.b) Priorities for improving genomics education and research, including funding, faculty training, teaching resources, 
+computational infrastructure and collaborations.
+"""
+Q17: What Resources Would Most Help You in Teaching Evolutionary Genetics
+or Wildlife Genetics? -- Unique Institute-wise Bar Chart
+Run this in Google Colab.
+
+Extracts institute-level resource-need categories from Q17 (a "select all
+that apply" question whose option text itself contains commas and
+parentheses, e.g. "Basic Equipment (e.g.., PCR, - 80?C Freezers, etc.)").
+A naive comma-split breaks these apart, so this script matches against the
+known canonical option phrases instead. Multiple respondents per institute
+are combined (union) into one set of resource needs per institute.
+
+Note: the "Access to field stations" option is present in the raw data but
+is not one of the 8 categories shown in the reference chart, so it is
+excluded from the plotted categories here too.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+# ------------------------------------------------------------------
+# 2. Identify columns
+# ------------------------------------------------------------------
+inst_col = "Institute's Name: "
+q17_col = [c for c in df.columns if 'Q17.' in c][0]
+print("Institute column:", repr(inst_col))
+print("Q17 column      :", repr(q17_col))
+
+# ------------------------------------------------------------------
+# 3. Canonical option phrases (matched by substring, NOT comma-split,
+#    since several option labels contain their own internal commas)
+# ------------------------------------------------------------------
+CANONICAL_TO_DISPLAY = {
+    'More funding for research and teaching': 'More Funding for\nResearch & Teaching',
+    'Training workshops for faculty': 'Training Workshops\nfor Faculty',
+    'New teaching materials': 'New Teaching Materials\n(Case Studies, Datasets)',
+    'Access to advanced computational infrastructure': 'Access to Advanced\nComputational Infrastructure',
+    'Industry collaborations': 'Industry Collaborations\n& Student Internships',
+    'Access to trained expert or consultant': 'Access to Trained\nExperts & Consultants',
+    'Access to journals': 'Access to Journals\n& Research Papers',
+    'Basic Equipment': 'Basic Lab Equipment\n(PCR, Freezers, etc.)',
+    # Present in the raw data but not part of the 8 plotted categories:
+    # 'Access to field stations',
+}
+
+def parse_resources(value):
+    text = str(value)
+    return {canon for canon in CANONICAL_TO_DISPLAY if canon in text}
+
+sub = df[[inst_col, q17_col]].dropna(subset=[inst_col, q17_col]).copy()
+sub['resources'] = sub[q17_col].apply(parse_resources)
+
+institute_resources = (
+    sub.groupby(inst_col)['resources']
+       .apply(lambda series: set().union(*series))
+)
+institute_resources = institute_resources[institute_resources.apply(len) > 0]
+total_institutes = len(institute_resources)
+print(f"\nTotal unique institutes (answered Q17): {total_institutes}")
+
+# ------------------------------------------------------------------
+# 4. Count institutes per category (multi-select, so % can exceed 100%
+#    in total, but each institute is counted at most once per category)
+# ------------------------------------------------------------------
+counts = Counter()
+for resources in institute_resources:
+    for canon in resources:
+        counts[CANONICAL_TO_DISPLAY[canon]] += 1
+
+resource_counts = (
+    pd.Series(counts)
+      .sort_values(ascending=False)
+      .rename('Count')
+      .to_frame()
+)
+resource_counts['Pct'] = resource_counts['Count'] / total_institutes * 100
+print("\nResource-need counts:")
+print(resource_counts)
+
+# ------------------------------------------------------------------
+# 5. Plot -- horizontal bar chart, largest on top, single-hue gradient
+# ------------------------------------------------------------------
+plot_data = resource_counts.sort_values('Count', ascending=True)  # smallest at bottom for barh
+
+n = len(plot_data)
+cmap = plt.cm.Blues
+# Darkest (navy-ish) for the largest bar, lightest for the smallest --
+# plot_data is smallest-to-largest, so reverse the shade order to match.
+shades = [cmap(0.35 + 0.55 * i / (n - 1)) for i in range(n)]
+
+fig, ax = plt.subplots(figsize=(17, 12))
+bars = ax.barh(plot_data.index, plot_data['Count'], color=shades, height=0.65)
+
+max_count = max(plot_data['Count'])
+for bar, v, p in zip(bars, plot_data['Count'], plot_data['Pct']):
+    w = bar.get_width()
+    ax.text(w / 2, bar.get_y() + bar.get_height() / 2, f"{v}",
+            ha='center', va='center', fontsize=17, fontweight='bold', color='white')
+    ax.text(w + max_count * 0.015, bar.get_y() + bar.get_height() / 2, f"{p:.1f}%",
+            ha='left', va='center', fontsize=14, fontweight='bold', color='black')
+
+ax.set_xlabel('Number of Unique Institutes Requesting This Resource', fontsize=14)
+ax.set_title('What Resources Would Most Help You in Teaching\n'
+              'Evolutionary Genetics or Wildlife Genetics?',
+              fontsize=18, fontweight='bold')
+ax.set_xlim(0, 100)
+for spine in ['top', 'right', 'left']:
+    ax.spines[spine].set_visible(False)
+ax.axvline(0, color='black', linewidth=1)
+ax.tick_params(axis='y', labelsize=12)
+for label in ax.get_yticklabels():
+    label.set_fontweight('bold')
+
+# Legend (category -> color), largest-first order, 3 columns
+legend_order = plot_data.index[::-1]
+legend_colors = shades[::-1]
+handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in legend_colors]
+ax.legend(handles, [l.replace('\n', ' ') for l in legend_order], title='Resource Categories',
+          loc='upper center', bbox_to_anchor=(0.5, -0.13), ncol=3, fontsize=11.5,
+          title_fontsize=13, frameon=True)
+
+fig.text(0.99, 0.005,
+          f"Total unique institutes: {total_institutes}   |   "
+          f"Multi-select — % may exceed 100%   |   "
+          f"Each institute counted once per resource category",
+          ha='right', fontsize=10.5, color='gray')
+
+plt.tight_layout(rect=[0, 0.08, 1, 1])
+plt.savefig('q17_resource_needs.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q17_resource_needs.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q17_resource_needs.tif (HD) and q17_resource_needs.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q17_resource_needs.tif")
+##################################################################################################################################################

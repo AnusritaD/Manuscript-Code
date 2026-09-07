@@ -1,0 +1,251 @@
+## Scripts for Figure 06
+### Figure 2. f) Awareness of freely available online learning resources.
+"""
+Awareness of Free Online Evolutionary Biology Learning Modules
+And What are the courses?
+(Combined: Q13 Yes/No awareness  +  Q14 platform UpSet plot)
+Run this in Google Colab.
+
+Merges the two previously separate charts into one stacked figure:
+  - Top    : Q13 institute-level Yes/No awareness summary (majority
+             response per institute, ties broken toward "Yes")
+  - Bottom : Q14 UpSet plot of which free online platforms institutes
+             are aware of, with exact-combination bars, a platform
+             membership matrix, and per-platform totals.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+inst_col = "Institute's Name: "
+
+# ==================================================================
+# PANEL 1 DATA -- Q13: Awareness Yes/No (institute-level majority)
+# ==================================================================
+q13_col = [c for c in df.columns if 'Q13.' in c][0]
+
+sub13 = df[[inst_col, q13_col]].dropna(subset=[inst_col, q13_col]).copy()
+sub13[q13_col] = sub13[q13_col].astype(str).str.strip()
+
+def majority_response(vals):
+    yes = (vals == 'Yes').sum()
+    no = (vals == 'No').sum()
+    return 'Yes' if yes >= no else 'No'
+
+institute_response = sub13.groupby(inst_col)[q13_col].apply(majority_response)
+total_institutes_13 = len(institute_response)
+
+counts13 = institute_response.value_counts()
+yes_inst = counts13.get('Yes', 0)
+no_inst = counts13.get('No', 0)
+yes_pct = yes_inst / total_institutes_13 * 100
+no_pct = no_inst / total_institutes_13 * 100
+
+print("Panel 1 - Q13 Awareness:")
+print(f"  Yes: {yes_inst} ({yes_pct:.1f}%)   No: {no_inst} ({no_pct:.1f}%)   Total: {total_institutes_13}")
+
+# ==================================================================
+# PANEL 2 DATA -- Q14: Platform UpSet plot
+# ==================================================================
+q14_col = [c for c in df.columns if 'Q14.' in c][0]
+
+sub14 = df[[inst_col, q14_col]].dropna(subset=[inst_col, q14_col]).copy()
+
+def parse_platforms(value):
+    return {p.strip() for p in str(value).split(',') if p.strip()}
+
+sub14['platforms'] = sub14[q14_col].apply(parse_platforms)
+institute_platforms = sub14.groupby(inst_col)['platforms'].apply(lambda s: set().union(*s))
+institute_platforms = institute_platforms[institute_platforms.apply(len) > 0]
+total_institutes_14 = len(institute_platforms)
+
+PLATFORM_ORDER = ['iBiology', 'YouTube', 'SWAYAM', 'SMBE IDEA', 'Others', 'NPTEL', 'Coursera']
+
+combo_counts = Counter(frozenset(s) for s in institute_platforms)
+combo_counts = dict(sorted(combo_counts.items(), key=lambda kv: -kv[1]))
+platform_totals = {p: sum(1 for s in institute_platforms if p in s) for p in PLATFORM_ORDER}
+
+print(f"\nPanel 2 - Q14 Platforms: n={total_institutes_14} institutes")
+print(combo_counts)
+print(platform_totals)
+
+def classify(combo):
+    if combo == {'YouTube', 'Coursera'}:
+        return 'green'
+    if combo == {'YouTube'}:
+        return 'orange'
+    if {'YouTube', 'Coursera', 'iBiology'}.issubset(combo):
+        return 'red'
+    return 'blue'
+
+COLOR_HEX = {'red': '#d9534f', 'green': '#2e9e5b', 'orange': '#e8a13a', 'blue': '#1f5fa8'}
+
+combos = list(combo_counts.keys())
+combo_vals = list(combo_counts.values())
+bar_colors = [COLOR_HEX[classify(c)] for c in combos]
+
+# ------------------------------------------------------------------
+# 2. Plot -- combined stacked figure using subfigures
+# ------------------------------------------------------------------
+fig = plt.figure(figsize=(20, 20))
+subfig_top, subfig_bottom = fig.subfigures(2, 1, height_ratios=[1, 1.5], hspace=0.05)
+
+# ===================== TOP: Q13 Yes/No =====================
+ax1 = subfig_top.subplots(1, 1)
+labels1 = ['Yes\n(Aware)', 'No\n(Not Aware)']
+vals1 = [yes_inst, no_inst]
+pcts1 = [yes_pct, no_pct]
+colors1 = ['#2e9e5b', '#d9534f']
+
+bars1 = ax1.bar(labels1, vals1, color=colors1, width=0.5)
+max1 = max(vals1)
+for bar, v, p in zip(bars1, vals1, pcts1):
+    ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max1 * 0.02,
+              f"{p:.1f}%", ha='center', va='bottom', fontsize=20, fontweight='bold', color='#333333')
+    ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() / 2, f"{v}",
+              ha='center', va='center', fontsize=26, fontweight='bold', color='white')
+
+ax1.set_ylabel('Number of Unique Institutes', fontsize=14, fontweight='bold')
+ax1.set_ylim(0, max1 * 1.35)
+for spine in ['top', 'right']:
+    ax1.spines[spine].set_visible(False)
+ax1.axhline(0, color='black', linewidth=1)
+for label in ax1.get_xticklabels():
+    label.set_fontweight('bold')
+    label.set_fontsize(13)
+
+subfig_top.text(0.99, -0.02,
+                  f"Total unique institutes: {total_institutes_13}  |  "
+                  f"Each institute counted once (majority response)",
+                  ha='right', fontsize=11, color='gray')
+
+subfig_top.suptitle('Awareness of Free Online Evolutionary Biology Learning Modules\n'
+                     'And What are the courses?', fontsize=20, fontweight='bold')
+
+# ===================== BOTTOM: Q14 UpSet =====================
+n_combos = len(combos)
+n_platforms = len(PLATFORM_ORDER)
+
+gs = gridspec.GridSpec(
+    2, 3, figure=subfig_bottom,
+    width_ratios=[1, 1.15, 5.2],
+    height_ratios=[2.3, 1.8],
+    wspace=0.05, hspace=0.05
+)
+
+ax_bar = subfig_bottom.add_subplot(gs[0, 2])
+ax_matrix = subfig_bottom.add_subplot(gs[1, 2], sharex=ax_bar)
+ax_labels = subfig_bottom.add_subplot(gs[1, 1], sharey=ax_matrix)
+ax_totals = subfig_bottom.add_subplot(gs[1, 0], sharey=ax_matrix)
+
+x = range(n_combos)
+bars = ax_bar.bar(x, combo_vals, color=bar_colors, width=0.6)
+for xi, c in zip(x, combo_vals):
+    ax_bar.text(xi, c + max(combo_vals) * 0.02, str(c),
+                ha='center', va='bottom', fontsize=13, fontweight='bold')
+ax_bar.set_ylabel('Number of Institutes', fontsize=13, fontweight='bold')
+ax_bar.spines[['top', 'right']].set_visible(False)
+ax_bar.tick_params(axis='x', bottom=False, labelbottom=False)
+ax_bar.axhline(0, color='black', linewidth=1)
+
+for row_i in range(n_platforms):
+    y = n_platforms - 1 - row_i
+    ax_matrix.axhspan(y - 0.5, y + 0.5,
+                       color='#f2f2f2' if row_i % 2 == 0 else 'white', zorder=0)
+
+for col_i, combo in enumerate(combos):
+    member_rows = [n_platforms - 1 - PLATFORM_ORDER.index(p) for p in PLATFORM_ORDER if p in combo]
+    color = bar_colors[col_i]
+    if len(member_rows) > 1:
+        ax_matrix.plot([col_i, col_i], [min(member_rows), max(member_rows)],
+                        color=color, linewidth=2.5, zorder=1)
+    for row_i in range(n_platforms):
+        y = n_platforms - 1 - row_i
+        is_member = PLATFORM_ORDER[row_i] in combo
+        ax_matrix.scatter(col_i, y,
+                           s=200 if is_member else 130,
+                           color=color if is_member else '#d9dee3',
+                           zorder=2, edgecolors='none')
+
+ax_matrix.set_yticks(range(n_platforms))
+ax_matrix.set_yticklabels([])
+ax_matrix.set_xticks(x)
+ax_matrix.set_xticklabels([])
+ax_matrix.set_xlim(-0.6, n_combos - 0.4)
+ax_matrix.set_ylim(-0.6, n_platforms - 0.4)
+for spine in ax_matrix.spines.values():
+    spine.set_visible(False)
+ax_matrix.tick_params(left=False, bottom=False)
+ax_matrix.axvline(-0.6, color='black', linewidth=1)
+
+for row_i, platform in enumerate(PLATFORM_ORDER):
+    y = n_platforms - 1 - row_i
+    ax_labels.text(1.0, y, platform, ha='right', va='center', fontsize=14, fontweight='bold')
+ax_labels.set_xlim(0, 1)
+ax_labels.axis('off')
+
+totals_ordered = [platform_totals[p] for p in PLATFORM_ORDER[::-1]]
+ax_totals.barh(range(n_platforms), totals_ordered, color='#1f5fa8', height=0.6)
+ax_totals.invert_xaxis()
+ax_totals.set_xlabel('Total Institutes\nAware of Platform', fontsize=10)
+ax_totals.tick_params(left=False, labelleft=False)
+for spine in ['top', 'left']:
+    ax_totals.spines[spine].set_visible(False)
+
+legend_handles = [
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['blue']),
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['red']),
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['green']),
+    plt.Rectangle((0, 0), 1, 1, color=COLOR_HEX['orange']),
+]
+legend_labels = [
+    'General Combination',
+    'YouTube + Coursera + iBiology',
+    'YouTube + Coursera Only',
+    'YouTube Only',
+]
+subfig_bottom.legend(legend_handles, legend_labels, title='Highlighted Combinations',
+                      loc='center right', fontsize=13, title_fontsize=15, frameon=True,
+                      bbox_to_anchor=(1.12, 0.65))
+
+subfig_bottom.suptitle('Free Online Learning Platforms for Evolutionary Biology\n'
+                        'Known by Respondents', fontsize=20, fontweight='bold')
+
+subfig_bottom.text(0.5, -0.02,
+                    f"Total unique institutes: {total_institutes_14}   |   Each dot = an online platform   |   "
+                    f"Connected dots = platforms known together   |   Bar height = institutes with that exact combination",
+                    ha='center', fontsize=11, color='gray')
+
+plt.savefig('q13_q14_combined.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q13_q14_combined.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q13_q14_combined.tif (HD) and q13_q14_combined.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q13_q14_combined.tif")
+#####################################################################################################################################################

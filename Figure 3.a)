@@ -1,0 +1,174 @@
+## Scripts for Figure 07
+### Figure 3.a) Major institutional constraints, including infrastructure, funding, skilled personnel and field-station access.
+"""
+Q15: Overall Challenge Frequency -- Unique Institute Count per Challenge
+Run this in Google Colab.
+
+Extracts institute-level challenge categories from Q15 (a "select all that
+apply" question whose option text itself contains commas, e.g.
+"Lack of institutional infrastructure (e.g., HPC, sequencing facilities)").
+A naive comma-split breaks these apart, so this script matches against the
+known canonical option phrases instead. Multiple respondents per institute
+are combined (union) into one set of challenges per institute.
+
+Note: the chart's "Limited Access to Field Stations" bucket combines two
+separate survey options -- "Access to field stations" and "Limited access
+to research data/databases" -- since an institute reporting either kind of
+limited access is counted once under this combined label.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+# ------------------------------------------------------------------
+# 2. Identify columns
+# ------------------------------------------------------------------
+inst_col = "Institute's Name: "
+q15_col = [c for c in df.columns if 'Q15.' in c][0]
+print("Institute column:", repr(inst_col))
+print("Q15 column      :", repr(q15_col))
+
+# ------------------------------------------------------------------
+# 3. Canonical option phrases (matched by substring, NOT comma-split,
+#    since several option labels contain their own internal commas)
+# ------------------------------------------------------------------
+CANONICAL_OPTIONS = [
+    'Lack of institutional infrastructure',
+    'Lack of skilled personnel',
+    'Limited access to research data/databases',
+    'Lack of funding',
+    'Access to field stations',
+    'Inflexible curriculum',
+    'Administrative hurdles',
+    'Student difficulty in understanding core concepts or numerical problems',
+    'Others',
+]
+
+def parse_challenges(value):
+    text = str(value)
+    return {opt for opt in CANONICAL_OPTIONS if opt in text}
+
+sub = df[[inst_col, q15_col]].dropna(subset=[inst_col, q15_col]).copy()
+sub['challenges'] = sub[q15_col].apply(parse_challenges)
+
+institute_challenges = (
+    sub.groupby(inst_col)['challenges']
+       .apply(lambda series: set().union(*series))
+)
+institute_challenges = institute_challenges[institute_challenges.apply(len) > 0]
+total_institutes = len(institute_challenges)
+print(f"\nTotal unique institutes (answered Q15): {total_institutes}")
+
+# ------------------------------------------------------------------
+# 4. Count institutes per display category.
+#    "Access to field stations" and "Limited access to research
+#    data/databases" are combined into one "Limited Access to Field
+#    Stations" bucket (an institute counts once even if it reported both).
+# ------------------------------------------------------------------
+DISPLAY_LABELS = {
+    'Lack of institutional infrastructure': 'Lack of Institutional Infrastructure',
+    'Lack of funding': 'Lack of Funding',
+    'Lack of skilled personnel': 'Lack of Skilled Personnel',
+    'Student difficulty in understanding core concepts or numerical problems':
+        'Student Difficulty in Understanding',
+    'Administrative hurdles': 'Administrative Hurdles',
+    'Inflexible curriculum': 'Inflexible Curriculum',
+}
+FIELD_STATION_GROUP = {'Access to field stations', 'Limited access to research data/databases'}
+FIELD_STATION_LABEL = 'Limited Access to Field Stations'
+
+counts = Counter()
+for challenges in institute_challenges:
+    for raw, display in DISPLAY_LABELS.items():
+        if raw in challenges:
+            counts[display] += 1
+    if challenges & FIELD_STATION_GROUP:
+        counts[FIELD_STATION_LABEL] += 1
+
+challenge_counts = (
+    pd.Series(counts)
+      .sort_values(ascending=False)
+      .rename('Count')
+      .to_frame()
+)
+challenge_counts['Pct'] = challenge_counts['Count'] / total_institutes * 100
+print("\nChallenge counts:")
+print(challenge_counts)
+
+# ------------------------------------------------------------------
+# 5. Plot -- horizontal bar chart, largest on top
+# ------------------------------------------------------------------
+plot_data = challenge_counts.sort_values('Count', ascending=True)  # smallest at bottom for barh
+
+color_map = {
+    'Lack of Institutional Infrastructure': '#1f5fa8',
+    'Lack of Funding': '#d9534f',
+    'Lack of Skilled Personnel': '#2e9e5b',
+    'Limited Access to Field Stations': '#e8a13a',
+    'Student Difficulty in Understanding': '#7b52ae',
+    'Administrative Hurdles': '#12a68a',
+    'Inflexible Curriculum': '#f0871e',
+}
+colors = [color_map.get(idx, '#999999') for idx in plot_data.index]
+
+fig, ax = plt.subplots(figsize=(16, 10))
+bars = ax.barh(plot_data.index, plot_data['Count'], color=colors, height=0.65)
+
+max_count = max(plot_data['Count'])
+for bar, v, p in zip(bars, plot_data['Count'], plot_data['Pct']):
+    w = bar.get_width()
+    ax.text(w / 2, bar.get_y() + bar.get_height() / 2, f"{v}",
+            ha='center', va='center', fontsize=18, fontweight='bold', color='white')
+    ax.text(w + max_count * 0.02, bar.get_y() + bar.get_height() / 2, f"{p:.1f}%",
+            ha='left', va='center', fontsize=15, fontweight='bold', color='black')
+
+ax.set_xlabel('Number of Unique Institutes Reporting', fontsize=14)
+ax.set_title('Overall Challenge Frequency',
+              fontsize=20, fontweight='bold')
+ax.set_xlim(0, max_count * 1.22)
+for spine in ['top', 'right', 'left']:
+    ax.spines[spine].set_visible(False)
+ax.axvline(0, color='black', linewidth=1)
+ax.tick_params(axis='y', labelsize=14)
+for label in ax.get_yticklabels():
+    label.set_fontweight('bold')
+
+fig.text(0.99, 0.01,
+          f"Total unique institutes: {total_institutes}  |  "
+          f"Each institute counted once per challenge",
+          ha='right', fontsize=11, color='gray')
+
+plt.tight_layout(rect=[0, 0.03, 1, 1])
+plt.savefig('q15_challenge_frequency.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q15_challenge_frequency.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q15_challenge_frequency.tif (HD) and q15_challenge_frequency.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q15_challenge_frequency.tif")
+##################################################################################################################################################

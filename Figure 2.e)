@@ -1,0 +1,154 @@
+## Scripts for Figure 05
+### Figure 2. e) Availability of hands-on evolutionary, ecological or wildlife-genetics training.
+"""
+Q16: Key Tools, Instruments & Setups Available in Labs
+Run this in Google Colab.
+
+Extracts institute-level equipment categories from Q16 (multi-select,
+comma-separated), collapses multiple respondents per institute into one
+combined set per institute, and counts how many institutes fall into each
+category. "Other / Not Specified" is only counted for institutes where it
+is the ONLY category reported (i.e. no real equipment category was also
+given) -- matching the reference chart's logic.
+"""
+
+import os
+from collections import Counter
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ------------------------------------------------------------------
+# 1. Load data (auto-prompts for upload in Colab if not already present)
+# ------------------------------------------------------------------
+CSV_FILENAME = 'All_in_one_corrected.csv'
+
+if not os.path.exists(CSV_FILENAME):
+    try:
+        from google.colab import files
+        print(f"'{CSV_FILENAME}' not found in the Colab runtime.")
+        print("A file picker will open -- please select your CSV file.")
+        uploaded = files.upload()
+        CSV_FILENAME = next(iter(uploaded))
+    except ImportError:
+        raise FileNotFoundError(
+            f"'{CSV_FILENAME}' not found. Place the CSV in the working "
+            f"directory, or update CSV_FILENAME to the correct path."
+        )
+
+df = pd.read_csv(CSV_FILENAME)
+
+# ------------------------------------------------------------------
+# 2. Identify columns
+# ------------------------------------------------------------------
+inst_col = "Institute's Name: "
+q16_col = [c for c in df.columns if c.strip().startswith('Q16.')][0]
+print("Institute column:", repr(inst_col))
+print("Q16 column      :", repr(q16_col))
+
+OTHER_LABEL = 'Other / Not Specified'
+
+# ------------------------------------------------------------------
+# 3. Build institute-level category sets
+#    Each response is a comma-separated list of category labels. Multiple
+#    respondents per institute are unioned into a single set per institute.
+# ------------------------------------------------------------------
+sub = df[[inst_col, q16_col]].dropna(subset=[inst_col, q16_col]).copy()
+
+def parse_categories(value):
+    return {p.strip() for p in str(value).split(',') if p.strip()}
+
+sub['categories'] = sub[q16_col].apply(parse_categories)
+
+institute_categories = (
+    sub.groupby(inst_col)['categories']
+       .apply(lambda series: set().union(*series))
+)
+institute_categories = institute_categories[institute_categories.apply(len) > 0]
+total_institutes = len(institute_categories)
+print(f"\nTotal unique institutes (answered Q16): {total_institutes}")
+
+# ------------------------------------------------------------------
+# 4. Count institutes per category.
+#    "Other / Not Specified" only counts institutes where it's the SOLE
+#    category (i.e. no specific equipment category was also mentioned).
+#    All other categories count every institute that mentioned them,
+#    regardless of what else was mentioned.
+# ------------------------------------------------------------------
+counts = Counter()
+for cats in institute_categories:
+    if cats == {OTHER_LABEL}:
+        counts[OTHER_LABEL] += 1
+    for cat in cats:
+        if cat != OTHER_LABEL:
+            counts[cat] += 1
+
+category_counts = (
+    pd.Series(counts)
+      .sort_values(ascending=False)
+      .rename('Count')
+      .to_frame()
+)
+category_counts['Pct'] = category_counts['Count'] / total_institutes * 100
+print("\nCategory counts:")
+print(category_counts)
+
+# ------------------------------------------------------------------
+# 5. Plot -- horizontal bar chart, largest on top
+# ------------------------------------------------------------------
+plot_data = category_counts.sort_values('Count', ascending=True)  # smallest at bottom for barh
+
+color_map = {
+    'PCR & Molecular Biology Equipment': '#1f5fa8',
+    'Other / Not Specified': '#2e9e5b',
+    'Bioinformatics & Computational Tools': '#e8a13a',
+    'Sequencing & Genomics Tools': '#d9534f',
+    'Cell Culture & Wet Lab Facilities': '#7b52ae',
+    'Microscopy & Imaging Equipment': '#12a68a',
+}
+colors = [color_map.get(idx, '#999999') for idx in plot_data.index]
+
+fig, ax = plt.subplots(figsize=(15, 10))
+bars = ax.barh(plot_data.index, plot_data['Count'], color=colors, height=0.65)
+
+max_count = max(plot_data['Count'])
+for bar, v, p in zip(bars, plot_data['Count'], plot_data['Pct']):
+    w = bar.get_width()
+    ax.text(w / 2, bar.get_y() + bar.get_height() / 2, f"{v}",
+            ha='center', va='center', fontsize=16, fontweight='bold', color='white')
+    ax.text(w + max_count * 0.035, bar.get_y() + bar.get_height() / 2, f"{p:.1f}%",
+            ha='left', va='center', fontsize=14, fontweight='bold', color='black')
+
+ax.set_xlabel('Number of Unique Institutes', fontsize=14)
+ax.set_title('Key Tools, Instruments & Setups Available in Labs',
+              fontsize=19, fontweight='bold')
+ax.set_xlim(0, max_count * 1.25)
+for spine in ['top', 'right', 'left']:
+    ax.spines[spine].set_visible(False)
+ax.axvline(0, color='black', linewidth=1)
+ax.tick_params(axis='y', labelsize=13)
+for label in ax.get_yticklabels():
+    label.set_fontweight('bold')
+
+# Legend (category -> color), largest-first order
+legend_order = plot_data.index[::-1]
+handles = [plt.Rectangle((0, 0), 1, 1, color=color_map.get(cat, '#999999')) for cat in legend_order]
+ax.legend(handles, legend_order, title='Category Legend', loc='upper center',
+          bbox_to_anchor=(0.5, -0.15), ncol=3, fontsize=12, title_fontsize=13, frameon=True)
+
+fig.text(0.99, 0.01,
+          f"Total unique institutes: {total_institutes}  |  An institute may appear in "
+          f"multiple categories  |  % based on total unique institutes",
+          ha='right', fontsize=10, color='gray')
+
+plt.tight_layout(rect=[0, 0.05, 1, 1])
+plt.savefig('q16_lab_tools.tif', dpi=300, format='tiff', bbox_inches='tight')
+plt.savefig('q16_lab_tools.png', dpi=200, bbox_inches='tight')
+plt.show()
+
+print("\n✅ Chart saved as q16_lab_tools.tif (HD) and q16_lab_tools.png (preview)")
+
+####################################################
+from google.colab import files
+files.download("q16_lab_tools.tif")
+##################################################################################################################################################

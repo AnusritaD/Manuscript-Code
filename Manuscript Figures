@@ -1,4 +1,5 @@
 ## Scripts for Figure 01
+### Figure 2.a) Institutions offering relevant life-science courses. 
 """
 Course Offerings Overview
 (Combined: Course Offerings Yes/No  +  Q5 Courses Listed by Institutions)
@@ -153,6 +154,7 @@ files.download("course_offerings_overview.tif")
 ##################################################################################################################################################
 
 ## Scripts for Figure 02
+### Figure 2.b) Major course areas.
 """
 Specific Topics Within Genomics Covered in Curriculum -- UpSet Plot
 Run this in Google Colab.
@@ -382,6 +384,7 @@ files.download("q9_genomics_upset.tif")
 ##################################################################################################################################################
 
 ## Scripts for Figure 03
+### Figure 2. c) Integration of genetics and heredity versus genomics and big-data approaches.
 """
 Integration of Genetics & Heredity vs Big Data & Genomics into
 Evolutionary Biology Courses (Q7 vs Q8, merged grouped bar chart)
@@ -522,6 +525,7 @@ files.download("q7_vs_q8_integration.tif")
 ##################################################################################################################################################
 
 ## Scripts for Figure 04
+### Figure 2. d) Academic level at which relevant courses are offered.
 """
 Q6: At What Level Are Courses Being Offered? -- Venn Diagram (Unique Institute Distribution)
 Run this in Google Colab.
@@ -712,6 +716,7 @@ files.download("q6_course_levels_venn.tif")
 ##################################################################################################################################################
 
 ## Scripts for Figure 05
+### Figure 2. e) Availability of hands-on evolutionary, ecological or wildlife-genetics training.
 """
 Q16: Key Tools, Instruments & Setups Available in Labs
 Run this in Google Colab.
@@ -866,6 +871,7 @@ files.download("q16_lab_tools.tif")
 ##################################################################################################################################################
 
 ## Scripts for Figure 06
+### Figure 2. f) Awareness of freely available online learning resources.
 """
 Awareness of Free Online Evolutionary Biology Learning Modules
 And What are the courses?
@@ -1117,6 +1123,7 @@ files.download("q13_q14_combined.tif")
 ##################################################################################################################################################
 
 ## Scripts for Figure 07
+### Figure 3.a) Major institutional constraints, including infrastructure, funding, skilled personnel and field-station access.
 """
 Q15: Overall Challenge Frequency -- Unique Institute Count per Challenge
 Run this in Google Colab.
@@ -1291,6 +1298,8 @@ files.download("q15_challenge_frequency.tif")
 ##################################################################################################################################################
 
 ## Scripts for Figure 08
+### Figure 3.b) Priorities for improving genomics education and research, including funding, faculty training, teaching resources, 
+computational infrastructure and collaborations.
 """
 Q17: What Resources Would Most Help You in Teaching Evolutionary Genetics
 or Wildlife Genetics? -- Unique Institute-wise Bar Chart

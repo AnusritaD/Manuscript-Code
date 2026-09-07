@@ -149,6 +149,8 @@ plt.show()
 print("\n✅ Chart saved as course_offerings_overview.tif (HD) and course_offerings_overview.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("course_offerings_overview.tif")
 ##################################################################################################################################################
@@ -379,6 +381,8 @@ plt.show()
 print("\n✅ Chart saved as q9_genomics_upset.tif (HD) and q9_genomics_upset.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q9_genomics_upset.tif")
 ##################################################################################################################################################
@@ -520,6 +524,8 @@ plt.show()
 print("\n✅ Chart saved as q7_vs_q8_integration.tif (HD) and q7_vs_q8_integration.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q7_vs_q8_integration.tif")
 ##################################################################################################################################################
@@ -711,6 +717,8 @@ plt.show()
 print("\n✅ Chart saved as q6_course_levels_venn.tif (HD) and q6_course_levels_venn.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q6_course_levels_venn.tif")
 ##################################################################################################################################################
@@ -866,6 +874,8 @@ plt.show()
 print("\n✅ Chart saved as q16_lab_tools.tif (HD) and q16_lab_tools.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q16_lab_tools.tif")
 ##################################################################################################################################################
@@ -1118,6 +1128,8 @@ plt.show()
 print("\n✅ Chart saved as q13_q14_combined.tif (HD) and q13_q14_combined.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q13_q14_combined.tif")
 ##################################################################################################################################################
@@ -1293,6 +1305,8 @@ plt.show()
 print("\n✅ Chart saved as q15_challenge_frequency.tif (HD) and q15_challenge_frequency.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q15_challenge_frequency.tif")
 ##################################################################################################################################################
@@ -1458,7 +1472,8 @@ plt.show()
 print("\n✅ Chart saved as q17_resource_needs.tif (HD) and q17_resource_needs.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q17_resource_needs.tif")
 ##################################################################################################################################################
-

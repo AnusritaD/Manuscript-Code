@@ -169,6 +169,8 @@ plt.show()
 print("\n✅ Chart saved as q15_challenge_frequency.tif (HD) and q15_challenge_frequency.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q15_challenge_frequency.tif")
 ##################################################################################################################################################

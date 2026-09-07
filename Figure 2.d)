@@ -185,6 +185,8 @@ plt.show()
 print("\n✅ Chart saved as q6_course_levels_venn.tif (HD) and q6_course_levels_venn.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q6_course_levels_venn.tif")
 ##################################################################################################################################################

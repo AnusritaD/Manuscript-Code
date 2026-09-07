@@ -135,6 +135,8 @@ plt.show()
 print("\n✅ Chart saved as q7_vs_q8_integration.tif (HD) and q7_vs_q8_integration.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q7_vs_q8_integration.tif")
 #####################################################################################################################################################

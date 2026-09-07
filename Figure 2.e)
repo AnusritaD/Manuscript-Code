@@ -149,6 +149,8 @@ plt.show()
 print("\n✅ Chart saved as q16_lab_tools.tif (HD) and q16_lab_tools.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q16_lab_tools.tif")
 ##################################################################################################################################################

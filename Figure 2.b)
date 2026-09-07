@@ -224,6 +224,8 @@ plt.show()
 print("\n✅ Chart saved as q9_genomics_upset.tif (HD) and q9_genomics_upset.png (preview)")
 
 ####################################################
+#### To download the image as a TIFF file. 
+
 from google.colab import files
 files.download("q9_genomics_upset.tif")
 #####################################################################################################################################################
